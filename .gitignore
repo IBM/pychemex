@@ -1,2 +1,6 @@
 # JetBrains
 .idea/
+
+# User specific data
+mmpdb/
+data/
