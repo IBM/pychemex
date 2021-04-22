@@ -1,7 +1,10 @@
 # PyChemEx
 Python library for Cheminformatics ML model explainability
 
-## Samples data
+
+## Example
+
+### Dataset
 
 Patented Melting Point data is used in this project to demonstrate the functionality.
 The dataset was derived from the following source.
@@ -14,3 +17,6 @@ The dataset was derived from the following source.
 | Dataset name | patents_ochem_enamine_bradley_begstrom_training |
 | URL | https://ochem.eu/article/99826 |
 
+### Features
+
+### Models
