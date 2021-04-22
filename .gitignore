@@ -1,5 +1,12 @@
+# Folders
 .idea
+.ipynb_checkpoints
 
+# I/O
 *.csv
+
+# Debugging
 *.log
 
+# Models
+*.joblib
