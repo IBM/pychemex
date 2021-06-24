@@ -8,7 +8,6 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-
 from hypothesis_testing.H4_scripts import SimilarityAnalysis
 
 
@@ -29,12 +28,13 @@ class ChemicalSpace:
         self.target_column_name = target_column_name
 
     def _compute_neighbors(self, x, y, n):
-        """ Brace yourself this will take a while for now """
-        sim = SimilarityAnalysis(self.data, self.mol_column_name, self.target_column_name, jobs=-1, features=[x, y])
+        """ Brace yourself this will take a while for now  In development..."""
+        sim = SimilarityAnalysis(self.data, self.mol_column_name, self.target_column_name, features=[x, y])
         neighbors_list = []
 
-        for mol in self.data[self.mol_column_name]:
+        for i, mol in enumerate(self.data[self.mol_column_name]):
             neighbors = sim.find_similar_molecules(mol, n)
+            print(f"Calculated {i}/{len(self.data[self.mol_column_name])}")
             neighbors_list.append(neighbors)
 
         neighbors_all = pd.concat(neighbors_list)
@@ -42,11 +42,44 @@ class ChemicalSpace:
 
         return neighbors_stats
 
-    def plot_feature_plane(self, feature_x: AnyStr, feature_y: AnyStr):
+    def plot_fragments_present(self, fragment_label: AnyStr, marker: AnyStr = None) -> object:
         """
-        Plots the feature plane
+        Plots fragment representation of the whole training dataset
         """
+        # TODO REFACTOR WHOLE FUNCTION
 
+        cols = [col for col in self.data.columns if fragment_label in col]
+        all_fragments = self.data[cols]
+        all_fragments = all_fragments.where(all_fragments[cols] == 0, 1)  # Converts to binary system.
+        # all_fragments /= all_fragments # Converts to binary system.
+        fragments = all_fragments[cols].sum().sort_values(ascending=False)
+        fig, ax = plt.subplots(figsize=(20, 12))
+        sns.set(style="darkgrid")
+
+        if marker:
+            mark = self.data[self.data[self.mol_column_name] == marker][fragments.index.to_list()]
+            mark /= mark
+            mark.replace(0, np.nan, inplace=True)
+            line_widths = mark * 1.5
+            bar1 = sns.barplot(x=fragments.index.to_list(), y=fragments.values, edgecolor='black',
+                               linewidth=line_widths.values[0])
+            plt.plot(mark.columns.values, mark.values[0], markersize=12, marker='x')
+        else:
+            bar1 = sns.barplot(x=fragments.index.to_list(), y=fragments.values)
+
+        loc, labels = plt.xticks()
+        bar1.set_xticklabels(labels, size=8, rotation=90)
+        bar1.set_xlabel("Fragments")
+        bar1.set_ylabel("Count")
+        bar1.set_xlim(-1, len(cols))
+        plt.tight_layout()
+        return fig, ax
+
+    def plot_feature_plane(self, feature_x: AnyStr, feature_y: AnyStr, marker: AnyStr = None) -> None:
+        """
+        Plots the feature plane for a given set of features.
+        """
+        # TODO REFACTOR WHOLE FUNCTION
         if self.data[feature_x].dtype not in ['float', 'float64', 'int', 'int64']:
             raise ValueError(f"{feature_x} is not a continous data feature please supply numerical features.")
 
@@ -56,31 +89,26 @@ class ChemicalSpace:
         xmin, xmax = data[feature_x].min(), data[feature_x].max()
         ymin, ymax = data[feature_y].min(), data[feature_y].max()
 
+        joint_plot = sns.jointplot(data=self.data, x=feature_x, y=feature_y,
+                                   marginal_kws=dict(bins=100),
+                                   xlim=(xmin, xmax), ylim=(ymin, ymax))
 
-        all_values = self._compute_neighbors(feature_x, feature_y,5)
-        self.data = self.data.merge(all_values, left_on="SMILES", right_index=True)
-        self.data["Density_coeff"] = 1/ (self.data['distance']+ 1e-18)
-        self.data["Density_coeff"] = self.data["Density_coeff"].fillna(0)
-        ax = sns.jointplot(data=self.data, x=feature_x, y=feature_y,
-                           marginal_kws=dict(bins=100),
-                           xlim=(0, xmax), ylim=(0, ymax))
+        joint_plot.ax_joint.cla()
+        plt.sca(joint_plot.ax_joint)  # strip out the joint keeping the marginals
 
-        ax.ax_joint.cla()
-        plt.sca(ax.ax_joint)  # strip out the joint keeping the marginals
-
-
-        plt.tricontourf(self.data[feature_x], self.data[feature_y], self.data["Density_coeff"])
-        # plt.hist2d(data=self.data, x=feature_x, y=feature_y, bins=(100, 100), cmap=cm.viridis,
-        #            range=[[0, xmax], [0, ymax]])
-        plt.colorbar()
-        plt.xlim()
+        plt.hist2d(data=self.data, x=feature_x, y=feature_y, bins=(100, 100), cmap="viridis",
+                   range=[[xmin, xmax], [ymin, ymax]])
+        if marker:
+            mark = self.data[self.data[self.mol_column_name] == marker]
+            plt.plot([mark[feature_x]], [mark[feature_y]], 'x', color='red', label=marker)
+            plt.legend()
         plt.xlabel(feature_x)
         plt.ylabel(feature_y)
-        return all_values
 
 
 if __name__ == "__main__":
-    data = pd.read_csv("../exploration/rdkit_descriptors.csv")
+    data = pd.read_csv("../exploration/rdkit_descriptors.csv").dropna()
     features = [col for col in data.columns if 'fr' not in col]
-    chem = ChemicalSpace(data=data[:10000], mol_column_name='SMILES', target_column_name='MP')
-    a = chem.plot_feature_plane('TPSA', "MolWt")
+    chem = ChemicalSpace(data=data, mol_column_name='SMILES', target_column_name='MP')
+    a = chem.plot_feature_plane('qed', "MinAbsPartialCharge", marker="ClC1=CC(Cl)=C2N=CC=C(Br)C2=C1")
+    b, c = chem.plot_fragments_present('fr', marker="ClC1=CC(Cl)=C2N=CC=C(Br)C2=C1")
