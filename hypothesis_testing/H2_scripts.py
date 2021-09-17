@@ -1,4 +1,7 @@
 import pandas as pd
+from scipy.stats import kstest
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 from typing import List, Optional
 
@@ -9,36 +12,54 @@ class FragmentAnalysis:
         self.fragment_columns = fragment_columns
         self.data = data
 
+        self.feature_explanation = {} # key = feature
+
     def visualise_feature(self, feature: str, fragment: str):
-        pass
+        with_, without = self._get_with_and_without_fragment_datasets(feature, fragment)
 
-    def scan_features(self, fragment: str):
-        pass
+        plt.figure(figsize=(15, 8))
 
-    def find_explainable_features(self, fragment: str):
-        pass
+        ax = sns.distplot(without, label="rest")
+        ax = sns.distplot(with_, color="black", label="selected")
+        return plt
 
-"""
-with_ = data[data[fragment]!=0][variable]
-without = data[~(data[fragment]!=0)][variable]
+    def _get_with_and_without_fragment_datasets(self, feature: str, fragment: str):
+        with_ = self.data[self.data[fragment] != 0][feature]
+        without = self.data[~(self.data[fragment] != 0)][feature]
+        return with_, without
 
-compared = with_.describe().to_frame(f"with {fragment}")
-compared[f"without {fragment}"] = without.describe()
-compared[fragment] = abs(compared[f"with {fragment}"] - compared[f"without {fragment}"])
+    def scan_fragments_for_explainability(self, feature: str):
+        deltas = []
+        for fragment in self.fragment_columns:
+            with_, without = self._get_with_and_without_fragment_datasets(feature, fragment)
+            if len(with_) == 0 or len(without)==0:
+                continue
+            compared = with_.describe().to_frame(f"with {fragment}")
+            compared[f"without {fragment}"] = without.describe()
+            compared[fragment] = abs(compared[f"with {fragment}"] - compared[f"without {fragment}"])
 
-plt.figure(figsize=(15, 8))
+            stat = kstest(with_, without, alternative="two-sided")
 
-ax = sns.distplot(without, label="rest")
-ax = sns.distplot(with_, color="black", label="selected")
+            delta = compared[[fragment]].transpose()
+            delta["K-S test p value"] = stat.pvalue
+            delta["count"] = len(with_)
+            mean_change = compared[f"with {fragment}"]["mean"] - compared[f"without {fragment}"]["mean"]
+            median_change = compared[f"with {fragment}"]["50%"] - compared[f"without {fragment}"]["50%"]
+            delta["mean change direction"] = "positive" if mean_change > 0 else "negative"
+            delta["median change direction"] = "positive" if median_change > 0 else "negative"
 
-"1. go thru features and get the difference in mean for have features vs ~(have feature)\n",
-    "    1. delta mean\n",
-    "    2. delta median\n",
-    "    3. Mann Whitney U test - give warning for unbalanced datasets... maybe not use at all since it's likely to be unbalanced\n",
-    "    4. prob that subset comes from population\n",
-    "2. select a feature\n",
-    "3. plot features vs ~(have feature)\n",
-    "4. repeat by scanning thru fragments?\n",
-    "5. select X features that are significant for fragment Y\n",
-    "6. think of how to handle categorical features (binary, ordered, unordered)"
-"""
+            deltas.append(delta)
+
+        explainability = pd.concat(deltas)
+        explainability.rename(columns={"50%": "median"}, inplace=True)
+
+        return explainability
+
+    def find_fragment_explanation(self, feature: str, metric: Optional[str] = "median", n_frags: Optional[int]=10):
+
+        explainability = self.scan_fragments_for_explainability(feature)
+        explainability = explainability.sort_values(metric, ascending=False).reset_index()
+
+        explanation = explainability.head(n_frags)
+
+        return explanation[["index", metric, f"{metric} change direction"]]
